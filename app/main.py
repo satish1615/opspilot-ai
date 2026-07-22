@@ -5,9 +5,13 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from app import models
 from app.analyzer import analyze_alert
+from app.database import Base, engine
 from app.storage import get_all_incidents, get_incident, save_incident
 
+
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="OpsPilot AI",
