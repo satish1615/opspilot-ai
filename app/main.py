@@ -5,11 +5,13 @@ from uuid import uuid4
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
+from app.analyzer import analyze_alert
+
 
 app = FastAPI(
     title="OpsPilot AI",
     description="Agentic SRE platform for incident investigation and remediation",
-    version="0.2.0",
+    version="0.3.0",
 )
 
 
@@ -39,9 +41,16 @@ def health_check():
 
 @app.post("/alerts", status_code=201)
 def receive_alert(alert: Alert):
+    analysis = analyze_alert(
+        alert_type=alert.alert_type,
+        value=alert.value,
+        threshold=alert.threshold,
+    )
+
     return {
         "alert_id": str(uuid4()),
-        "status": "received",
+        "status": "analysed",
         "received_at": datetime.now(timezone.utc).isoformat(),
         "alert": alert,
+        "analysis": analysis,
     }
