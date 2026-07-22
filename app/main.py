@@ -2,16 +2,17 @@ from datetime import datetime, timezone
 from typing import Literal
 from uuid import uuid4
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from app.analyzer import analyze_alert
+from app.storage import get_all_incidents, get_incident, save_incident
 
 
 app = FastAPI(
     title="OpsPilot AI",
     description="Agentic SRE platform for incident investigation and remediation",
-    version="0.3.0",
+    version="0.4.0",
 )
 
 
@@ -47,10 +48,32 @@ def receive_alert(alert: Alert):
         threshold=alert.threshold,
     )
 
-    return {
+    incident = {
         "alert_id": str(uuid4()),
         "status": "analysed",
         "received_at": datetime.now(timezone.utc).isoformat(),
-        "alert": alert,
+        "alert": alert.model_dump(),
         "analysis": analysis,
     }
+
+    save_incident(incident)
+
+    return incident
+
+
+@app.get("/incidents")
+def list_incidents():
+    return {
+        "total": len(get_all_incidents()),
+        "incidents": get_all_incidents(),
+    }
+
+
+@app.get("/incidents/{alert_id}")
+def read_incident(alert_id: str):
+    incident = get_incident(alert_id)
+
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    return incident
