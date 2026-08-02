@@ -19,7 +19,7 @@ def analyze_alert(alert_type: str, value: float, threshold: float):
     is_breached = (
         value <= threshold
         if alert_type == "SERVICE_DOWN"
-        else value >= threshold
+        else value > threshold
     )
 
     return {
