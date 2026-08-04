@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpsPilot AI Dashboard</title>
+  <style>
+    :root { color-scheme: dark; --bg:#07111f; --panel:#101d30; --line:#263a54; --text:#eaf2ff; --muted:#9fb2ca; --accent:#55d6be; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; background:linear-gradient(160deg,#07111f,#0b1830 60%,#10203a); color:var(--text); min-height:100vh; }
+    header { padding:32px max(24px,6vw) 18px; display:flex; justify-content:space-between; align-items:flex-end; gap:24px; }
+    h1 { margin:0; font-size:clamp(30px,5vw,56px); letter-spacing:-.04em; }
+    .eyebrow { color:var(--accent); font-weight:700; letter-spacing:.14em; text-transform:uppercase; font-size:12px; }
+    .subtitle { color:var(--muted); max-width:780px; line-height:1.6; }
+    main { padding:0 max(24px,6vw) 60px; }
+    .cards { display:grid; grid-template-columns:repeat(5,minmax(140px,1fr)); gap:14px; margin:22px 0; }
+    .card,.panel { background:rgba(16,29,48,.88); border:1px solid var(--line); border-radius:18px; box-shadow:0 18px 60px rgba(0,0,0,.22); }
+    .card { padding:18px; }.card strong { display:block; font-size:30px; margin-top:8px; }.card span,label,th { color:var(--muted); }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }.panel { padding:22px; }.panel h2 { margin-top:0; font-size:20px; }
+    label { display:block; font-size:12px; margin:12px 0 6px; }
+    input,select,textarea,button { width:100%; border-radius:11px; border:1px solid var(--line); padding:11px 12px; font:inherit; }
+    input,select,textarea { background:#0a1628; color:var(--text); } textarea { min-height:90px; resize:vertical; }
+    button { margin-top:16px; cursor:pointer; border:0; background:var(--accent); color:#04110f; font-weight:800; } button.secondary { background:#243852; color:var(--text); }
+    .result { margin-top:14px; padding:13px; border-radius:12px; background:#091525; color:var(--muted); min-height:52px; white-space:pre-wrap; overflow:auto; }
+    .table-wrap { overflow:auto; } table { width:100%; border-collapse:collapse; min-width:900px; } th,td { text-align:left; padding:12px; border-bottom:1px solid var(--line); font-size:13px; }
+    .pill { display:inline-block; padding:4px 9px; border-radius:999px; background:#203550; font-weight:700; }.footer-links { display:flex; gap:12px; flex-wrap:wrap; } a { color:var(--accent); }
+    @media (max-width:1050px){ .cards{grid-template-columns:repeat(2,1fr)} .grid{grid-template-columns:1fr} } @media (max-width:560px){ .cards{grid-template-columns:1fr} header{align-items:flex-start;flex-direction:column} }
+  </style>
+</head>
+<body>
+<header><div><div class="eyebrow">Hackathon-ready incident triage</div><h1>OpsPilot AI</h1><p class="subtitle">Receive monitoring alerts and human-created incidents, classify priority, retrieve approved runbook evidence, preserve history, and keep remediation behind human approval.</p></div><div class="footer-links"><a href="/docs">Swagger API</a><a href="/runbooks">Runbooks</a></div></header>
+<main>
+<section class="cards" id="metrics"></section>
+<section class="grid">
+<div class="panel"><h2>Submit monitoring alert</h2><form id="alertForm"><label>Alert type</label><select name="alert_type"><option>HIGH_CPU</option><option>HIGH_MEMORY</option><option>DISK_FULL</option><option>SERVICE_DOWN</option><option>HTTP_5XX_SPIKE</option></select><label>Server</label><input name="server" value="demo-app-01" required /><label>Current value</label><input name="value" type="number" step="any" value="95" required /><label>Threshold</label><input name="threshold" type="number" step="any" value="80" required /><label>Reported severity</label><select name="severity"><option value="">Auto-calculate</option><option>low</option><option>medium</option><option>high</option><option>critical</option></select><button>Analyse alert</button></form><div class="result" id="alertResult">Ready.</div></div>
+<div class="panel"><h2>Submit human incident</h2><form id="humanForm"><label>Title</label><input name="title" value="Multiple users cannot connect to VPN" required /><label>Description</label><textarea name="description" required>Users receive a connection timeout while signing in to the corporate VPN.</textarea><label>Impact</label><select name="impact"><option>low</option><option selected>medium</option><option>high</option></select><label>Urgency</label><select name="urgency"><option>low</option><option>medium</option><option selected>high</option></select><label>Affected users</label><input name="affected_users" type="number" value="35" min="1" required /><label><input name="workaround_available" type="checkbox" style="width:auto" /> Workaround available</label><button>Analyse incident</button></form><div class="result" id="humanResult">Ready.</div></div>
+</section>
+<section class="panel" style="margin-top:18px"><div style="display:flex;justify-content:space-between;gap:16px;align-items:center"><h2>Incident history</h2><button class="secondary" style="width:auto;margin:0" onclick="refreshAll()">Refresh</button></div><div class="table-wrap"><table><thead><tr><th>ID</th><th>Source</th><th>Title/Input</th><th>Priority</th><th>Category</th><th>Confidence</th><th>Status</th></tr></thead><tbody id="incidentRows"></tbody></table></div></section>
+</main>
+<script>
+const $=id=>document.getElementById(id);async function api(path,options={}){const r=await fetch(path,{headers:{"Content-Type":"application/json"},...options});const data=await r.json();if(!r.ok)throw new Error(JSON.stringify(data));return data}function compactResult(data){return `Incident: ${data.incident_id}\nPriority: ${data.analysis.priority}\nCategory: ${data.analysis.category}\nAssigned to: ${data.analysis.assignment_group}\nProbable cause: ${data.analysis.probable_cause}\nRecommended action: ${data.analysis.recommended_action}\nConfidence: ${data.analysis.confidence}%`}
+$('alertForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.target);const payload={alert_type:f.get('alert_type'),server:f.get('server'),value:Number(f.get('value')),threshold:Number(f.get('threshold'))};if(f.get('severity'))payload.severity=f.get('severity');try{const d=await api('/alerts',{method:'POST',body:JSON.stringify(payload)});$('alertResult').textContent=compactResult(d);refreshAll()}catch(err){$('alertResult').textContent=err.message}});
+$('humanForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.target);const payload={title:f.get('title'),description:f.get('description'),impact:f.get('impact'),urgency:f.get('urgency'),affected_users:Number(f.get('affected_users')),workaround_available:f.get('workaround_available')==='on'};try{const d=await api('/human-incidents',{method:'POST',body:JSON.stringify(payload)});$('humanResult').textContent=compactResult(d);refreshAll()}catch(err){$('humanResult').textContent=err.message}});
+async function refreshAll(){const[m,list]=await Promise.all([api('/metrics/summary'),api('/incidents?limit=50')]);const labels={total_incidents:'Total incidents',monitoring_alerts:'Monitoring alerts',human_incidents:'Human incidents',p1_incidents:'P1 incidents',approvals_pending:'Approvals pending'};$('metrics').innerHTML=Object.entries(m).map(([k,v])=>`<div class="card"><span>${labels[k]}</span><strong>${v}</strong></div>`).join('');$('incidentRows').innerHTML=list.incidents.map(i=>`<tr><td title="${i.incident_id}">${i.incident_id.slice(0,8)}…</td><td>${i.source_type}</td><td>${i.input.title||i.input.alert_type}</td><td><span class="pill">${i.analysis.priority}</span></td><td>${i.analysis.category}</td><td>${i.analysis.confidence}%</td><td>${i.status}</td></tr>`).join('')||'<tr><td colspan="7">No incidents yet.</td></tr>'}refreshAll();
+</script>
+</body>
+</html>
