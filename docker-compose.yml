@@ -1,0 +1,9 @@
+services:
+  opspilot-ai:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      OPSPILOT_DATABASE_URL: sqlite:///./data/opspilot.db
+    volumes:
+      - ./data:/app/data
