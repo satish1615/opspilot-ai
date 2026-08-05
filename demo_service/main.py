@@ -79,7 +79,7 @@ def service_info() -> dict:
     }
 
 
-@app.get("/health")
+@app.get("/health", response_model=None)
 def health_check() -> JSONResponse | dict:
     """Return a deliberately shallow health check.
 
