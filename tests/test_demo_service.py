@@ -20,14 +20,13 @@ def demo_client():
 
 
 def test_synthetic_service_starts_healthy(demo_client):
-    legacy_health = demo_client.get("/health")
+    removed_legacy_health = demo_client.get("/health")
     live = demo_client.get("/health/live")
     ready = demo_client.get("/health/ready")
     synthetic_check = demo_client.get("/synthetic/booking-check")
     booking = demo_client.get("/bookings/DEMO-1001")
 
-    assert legacy_health.status_code == 200
-    assert legacy_health.json()["status"] == "alive"
+    assert removed_legacy_health.status_code == 404
     assert live.status_code == 200
     assert live.json()["status"] == "alive"
     assert ready.status_code == 200
@@ -39,7 +38,7 @@ def test_synthetic_service_starts_healthy(demo_client):
     assert booking.json()["booking_id"] == "DEMO-1001"
     assert booking.json()["passenger"] == "Synthetic Traveller"
 
-    for public_response in (legacy_health, live, ready, synthetic_check):
+    for public_response in (live, ready, synthetic_check):
         assert "mode" not in public_response.json()
         assert "latency_ms" not in public_response.json()
 
