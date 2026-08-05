@@ -119,16 +119,6 @@ def service_info() -> dict:
     }
 
 
-@app.get("/health", deprecated=True)
-def legacy_health_check() -> dict:
-    """Backward-compatible liveness alias.
-
-    New integrations should use ``/health/live`` and ``/health/ready``.
-    """
-
-    return _liveness_payload()
-
-
 @app.get("/health/live")
 def liveness_check() -> dict:
     """Report whether the application process is running."""
