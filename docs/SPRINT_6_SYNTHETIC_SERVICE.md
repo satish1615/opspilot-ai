@@ -23,7 +23,8 @@ All records and routes are synthetic.
 - `GET /health/live` — confirms that the application process is running.
 - `GET /health/ready` — confirms that required dependencies are available and the instance can receive traffic.
 - `GET /synthetic/booking-check` — executes an outside-in booking journey and compares its response time with an SLO.
-- `GET /health` — deprecated backward-compatible liveness alias.
+
+The synthetic service intentionally does not expose a generic `GET /health` route. This avoids ambiguity and makes integrations choose the correct operational signal.
 
 Public health responses intentionally do not expose the active failure mode or configured latency. Detailed demo controls remain available through `GET /admin/state`.
 
@@ -98,6 +99,7 @@ This is the core outside-in monitoring scenario: process and dependency checks r
 
 - Existing OpsPilot tests continue to pass.
 - Synthetic service tests cover healthy, latency, dependency failure, reset, invalid configuration, and invalid SLO input.
+- The removed generic `/health` route returns HTTP 404.
 - Liveness stays available when a simulated dependency fails.
 - Readiness rejects traffic when a required dependency is unavailable.
 - High-latency mode keeps liveness and readiness green while the outside-in journey violates its SLO.
