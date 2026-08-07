@@ -6,14 +6,18 @@ collector. Set OTEL_ENABLED=true when running the Sprint 7 observability stack.
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 
 from fastapi import FastAPI
 from opentelemetry import metrics, trace
+from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
@@ -24,6 +28,15 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 DEFAULT_SERVICE_NAME = "opspilot-synthetic-booking"
 DEFAULT_OTLP_ENDPOINT = "http://localhost:4318"
 DEFAULT_ENVIRONMENT = "hackathon-demo"
+APP_LOGGER_NAME = "opspilot.synthetic_booking"
+
+_application_logger = logging.getLogger(APP_LOGGER_NAME)
+_application_logger.setLevel(logging.INFO)
+_application_logger.propagate = False
+if not _application_logger.handlers:
+    _application_logger.addHandler(logging.NullHandler())
+
+_logger_provider: LoggerProvider | None = None
 
 
 @dataclass(frozen=True)
@@ -54,12 +67,20 @@ def load_telemetry_config() -> TelemetryConfig:
     )
 
 
+def get_application_logger() -> logging.Logger:
+    """Return the synthetic-service logger used for incident-relevant events."""
+
+    return _application_logger
+
+
 def configure_telemetry(app: FastAPI) -> TelemetryConfig:
-    """Instrument FastAPI and export traces/metrics to an OTLP HTTP collector.
+    """Instrument FastAPI and export traces, metrics, and logs over OTLP HTTP.
 
     The collector is intentionally optional. Keeping telemetry disabled by default
     lets unit tests and the Sprint 6 demo run without external infrastructure.
     """
+
+    global _logger_provider
 
     config = load_telemetry_config()
     if not config.enabled:
@@ -88,6 +109,17 @@ def configure_telemetry(app: FastAPI) -> TelemetryConfig:
     )
     meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
     metrics.set_meter_provider(meter_provider)
+
+    _logger_provider = LoggerProvider(resource=resource)
+    _logger_provider.add_log_record_processor(
+        BatchLogRecordProcessor(
+            OTLPLogExporter(endpoint=f"{config.otlp_endpoint}/v1/logs")
+        )
+    )
+    if not any(isinstance(handler, LoggingHandler) for handler in _application_logger.handlers):
+        _application_logger.addHandler(
+            LoggingHandler(level=logging.INFO, logger_provider=_logger_provider)
+        )
 
     FastAPIInstrumentor.instrument_app(
         app,
