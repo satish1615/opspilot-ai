@@ -15,6 +15,8 @@ from fastapi import FastAPI, HTTPException, Path, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from demo_service.telemetry import configure_telemetry
+
 
 DEFAULT_SYNTHETIC_SLO_MS = 500
 SYNTHETIC_DEPENDENCY = "synthetic-inventory-service"
@@ -69,8 +71,10 @@ app = FastAPI(
         "A controlled, synthetic service used to generate healthy, high-latency, "
         "and dependency-failure scenarios for the OpsPilot AI hackathon demo."
     ),
-    version="0.2.0",
+    version="0.3.0",
 )
+
+telemetry_config = configure_telemetry(app)
 
 
 def _liveness_payload() -> dict[str, str | bool]:
@@ -218,6 +222,18 @@ def read_failure_state() -> dict:
     """Expose the current demo state for scripts and test automation."""
 
     return state.snapshot()
+
+
+@app.get("/admin/telemetry")
+def read_telemetry_config() -> dict[str, str | bool]:
+    """Expose non-secret telemetry configuration for local demo diagnostics."""
+
+    return {
+        "enabled": telemetry_config.enabled,
+        "service_name": telemetry_config.service_name,
+        "environment": telemetry_config.environment,
+        "otlp_endpoint": telemetry_config.otlp_endpoint,
+    }
 
 
 @app.post("/admin/failure-mode")
