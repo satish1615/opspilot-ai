@@ -1,5 +1,7 @@
 # Local-only Tempo configuration for the OpsPilot AI hackathon demo.
-# This is intentionally single-binary and filesystem-backed, not production HA.
+# Single-binary, filesystem-backed configuration for local validation only.
+
+stream_over_http_enabled: true
 
 server:
   http_listen_port: 3200
@@ -13,10 +15,6 @@ distributor:
         http:
           endpoint: 0.0.0.0:4318
 
-compactor:
-  compaction:
-    block_retention: 24h
-
 storage:
   trace:
     backend: local
@@ -24,3 +22,6 @@ storage:
       path: /var/tempo/wal
     local:
       path: /var/tempo/blocks
+
+usage_report:
+  reporting_enabled: false
