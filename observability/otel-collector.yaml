@@ -15,15 +15,15 @@ exporters:
   debug:
     verbosity: basic
 
-  otlphttp/tempo:
+  otlp_http/tempo:
     endpoint: http://tempo:4318
 
-  prometheusremotewrite/mimir:
+  prometheus_remote_write/mimir:
     endpoint: http://mimir:9009/api/v1/push
     resource_to_telemetry_conversion:
       enabled: true
 
-  otlphttp/loki:
+  otlp_http/loki:
     endpoint: http://loki:3100/otlp
 
 service:
@@ -31,14 +31,14 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp/tempo, debug]
+      exporters: [otlp_http/tempo, debug]
 
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [prometheusremotewrite/mimir, debug]
+      exporters: [prometheus_remote_write/mimir, debug]
 
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp/loki, debug]
+      exporters: [otlp_http/loki, debug]
