@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException, Path, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from demo_service.telemetry import configure_telemetry
+from demo_service.telemetry import configure_telemetry, get_application_logger
 
 
 DEFAULT_SYNTHETIC_SLO_MS = 500
@@ -71,10 +71,11 @@ app = FastAPI(
         "A controlled, synthetic service used to generate healthy, high-latency, "
         "and dependency-failure scenarios for the OpsPilot AI hackathon demo."
     ),
-    version="0.3.0",
+    version="0.4.0",
 )
 
 telemetry_config = configure_telemetry(app)
+logger = get_application_logger()
 
 
 def _liveness_payload() -> dict[str, str | bool]:
@@ -167,6 +168,17 @@ async def synthetic_booking_check(
     snapshot = state.snapshot()
 
     if snapshot["mode"] == FailureMode.DEPENDENCY_FAILURE.value:
+        logger.error(
+            "Synthetic booking check failed because dependency is unavailable",
+            extra={
+                "opspilot.event": "synthetic_booking_check",
+                "opspilot.status": "failed",
+                "opspilot.reason": "dependency_unavailable",
+                "opspilot.dependency": SYNTHETIC_DEPENDENCY,
+                "opspilot.slo_ms": slo_ms,
+                "opspilot.synthetic": True,
+            },
+        )
         return JSONResponse(
             status_code=503,
             content={
@@ -193,6 +205,17 @@ async def synthetic_booking_check(
     }
 
     if response_time_ms > slo_ms:
+        logger.warning(
+            "Synthetic booking check breached the configured SLO",
+            extra={
+                "opspilot.event": "synthetic_booking_check",
+                "opspilot.status": "degraded",
+                "opspilot.reason": "slo_violation",
+                "opspilot.response_time_ms": response_time_ms,
+                "opspilot.slo_ms": slo_ms,
+                "opspilot.synthetic": True,
+            },
+        )
         return JSONResponse(
             status_code=503,
             content={
@@ -202,6 +225,16 @@ async def synthetic_booking_check(
             },
         )
 
+    logger.info(
+        "Synthetic booking check completed within SLO",
+        extra={
+            "opspilot.event": "synthetic_booking_check",
+            "opspilot.status": "healthy",
+            "opspilot.response_time_ms": response_time_ms,
+            "opspilot.slo_ms": slo_ms,
+            "opspilot.synthetic": True,
+        },
+    )
     return {
         "status": "healthy",
         **result,
@@ -240,9 +273,19 @@ def read_telemetry_config() -> dict[str, str | bool]:
 def set_failure_mode(request: FailureModeRequest) -> dict:
     """Enable one safe and reversible failure scenario."""
 
+    snapshot = state.configure(request.mode, request.latency_ms)
+    logger.info(
+        "Synthetic failure mode updated",
+        extra={
+            "opspilot.event": "failure_mode_updated",
+            "opspilot.failure_mode": request.mode.value,
+            "opspilot.latency_ms": request.latency_ms,
+            "opspilot.synthetic": True,
+        },
+    )
     return {
         "message": "Synthetic failure mode updated",
-        **state.configure(request.mode, request.latency_ms),
+        **snapshot,
     }
 
 
@@ -250,7 +293,16 @@ def set_failure_mode(request: FailureModeRequest) -> dict:
 def reset_failure_mode() -> dict:
     """Return the service to its healthy baseline."""
 
+    snapshot = state.reset()
+    logger.info(
+        "Synthetic service reset to healthy baseline",
+        extra={
+            "opspilot.event": "failure_mode_reset",
+            "opspilot.failure_mode": FailureMode.HEALTHY.value,
+            "opspilot.synthetic": True,
+        },
+    )
     return {
         "message": "Synthetic service reset",
-        **state.reset(),
+        **snapshot,
     }
