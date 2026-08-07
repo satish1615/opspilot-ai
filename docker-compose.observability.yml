@@ -1,0 +1,62 @@
+services:
+  tempo:
+    image: grafana/tempo:3.0.0
+    container_name: opspilot-tempo
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./observability/tempo.yaml:/etc/tempo/tempo.yaml:ro
+    ports:
+      - "3200:3200"
+    restart: unless-stopped
+
+  mimir:
+    image: grafana/mimir:3.0.6
+    container_name: opspilot-mimir
+    command: ["-config.file=/etc/mimir/mimir.yaml"]
+    volumes:
+      - ./observability/mimir.yaml:/etc/mimir/mimir.yaml:ro
+    ports:
+      - "9009:9009"
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.7.0
+    container_name: opspilot-loki
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    volumes:
+      - ./observability/loki.yaml:/etc/loki/local-config.yaml:ro
+    ports:
+      - "3100:3100"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:12.4.0
+    container_name: opspilot-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - tempo
+      - mimir
+      - loki
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.157.0
+    container_name: opspilot-otel-collector
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    depends_on:
+      - tempo
+      - mimir
+      - loki
+    restart: unless-stopped
