@@ -1,8 +1,8 @@
 """LangGraph orchestration for evidence-first incident investigation.
 
-Sprint 8 starts with a deterministic graph so orchestration can be tested without
-an API key or external LLM. Later Sprint 8 increments will add observability
-collection, vector RAG, and LiteLLM reasoning while preserving this graph contract.
+Sprint 8 begins with a deterministic fallback and then enriches that state with
+read-only observability evidence. LLM reasoning is added only after the evidence
+contract is proven so generated RCA can be grounded instead of invented.
 """
 
 from __future__ import annotations
@@ -10,6 +10,8 @@ from __future__ import annotations
 from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
+
+from app.agent.observability import gather_observability_evidence
 
 
 WORKFLOW_NAME = "langgraph_incident_investigation_v1"
@@ -23,6 +25,8 @@ class InvestigationState(TypedDict, total=False):
     incident: dict
     evidence: list[dict]
     similar_incidents: list[dict]
+    telemetry_evidence: list[dict]
+    observability: dict
     hypothesis: dict
     workflow_steps: list[str]
     status: str
@@ -33,7 +37,7 @@ def _append_step(state: InvestigationState, step: str) -> list[str]:
 
 
 def collect_incident_context(state: InvestigationState) -> dict:
-    """Collect evidence already attached to the persisted OpsPilot incident."""
+    """Collect runbook and historical evidence already attached to the incident."""
 
     incident = state["incident"]
     analysis = incident.get("analysis", {})
@@ -44,11 +48,22 @@ def collect_incident_context(state: InvestigationState) -> dict:
     }
 
 
+def collect_observability_evidence(state: InvestigationState) -> dict:
+    """Query Tempo, Mimir, and Loki for read-only operational evidence."""
+
+    observability = gather_observability_evidence(state["incident"])
+    return {
+        "telemetry_evidence": list(observability.get("evidence", [])),
+        "observability": {key: value for key, value in observability.items() if key != "evidence"},
+        "workflow_steps": _append_step(state, "collect_observability_evidence"),
+    }
+
+
 def build_initial_hypothesis(state: InvestigationState) -> dict:
     """Build a transparent baseline hypothesis from deterministic analysis.
 
-    This node deliberately does not call an LLM. Its purpose is to establish a
-    safe fallback and a stable contract before model-backed reasoning is enabled.
+    This node deliberately does not call an LLM. Its purpose is to remain a safe
+    fallback while Sprint 8 adds vector retrieval and model-backed reasoning.
     """
 
     analysis = state["incident"].get("analysis", {})
@@ -78,11 +93,15 @@ def build_initial_hypothesis(state: InvestigationState) -> dict:
 
 
 def validate_grounding(state: InvestigationState) -> dict:
-    """Mark whether the current hypothesis has supporting project evidence."""
+    """Mark whether the hypothesis has project or live telemetry evidence."""
 
     analysis = state["incident"].get("analysis", {})
     issue_detected = bool(analysis.get("issue_detected"))
-    has_context = bool(state.get("evidence") or state.get("similar_incidents"))
+    has_context = bool(
+        state.get("evidence")
+        or state.get("similar_incidents")
+        or state.get("telemetry_evidence")
+    )
 
     if not issue_detected:
         status = "no_issue_detected"
@@ -102,11 +121,13 @@ def build_investigation_graph():
 
     workflow = StateGraph(InvestigationState)
     workflow.add_node("collect_incident_context", collect_incident_context)
+    workflow.add_node("collect_observability_evidence", collect_observability_evidence)
     workflow.add_node("build_initial_hypothesis", build_initial_hypothesis)
     workflow.add_node("validate_grounding", validate_grounding)
 
     workflow.add_edge(START, "collect_incident_context")
-    workflow.add_edge("collect_incident_context", "build_initial_hypothesis")
+    workflow.add_edge("collect_incident_context", "collect_observability_evidence")
+    workflow.add_edge("collect_observability_evidence", "build_initial_hypothesis")
     workflow.add_edge("build_initial_hypothesis", "validate_grounding")
     workflow.add_edge("validate_grounding", END)
     return workflow.compile()
@@ -134,5 +155,8 @@ def run_investigation(incident: dict) -> dict:
         "steps": final_state["workflow_steps"],
         "evidence_count": len(final_state.get("evidence", [])),
         "similar_incident_count": len(final_state.get("similar_incidents", [])),
+        "telemetry_evidence_count": len(final_state.get("telemetry_evidence", [])),
+        "observability": final_state.get("observability", {}),
+        "telemetry_evidence": final_state.get("telemetry_evidence", []),
         "hypothesis": final_state["hypothesis"],
     }
