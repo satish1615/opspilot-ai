@@ -11,6 +11,7 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 
+from app.agent import run_investigation
 from app.analyzer import analyze_human_incident, analyze_monitoring_alert
 from app.database import database_is_healthy, initialise_database
 from app.knowledge import RUNBOOKS
@@ -18,6 +19,7 @@ from app.schemas import (
     HumanIncidentCreate,
     IncidentListResponse,
     IncidentResponse,
+    InvestigationResponse,
     MonitoringAlertCreate,
     RemediationApprovalRequest,
 )
@@ -30,7 +32,7 @@ from app.storage import (
     summary_metrics,
 )
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 DASHBOARD_PATH = Path(__file__).resolve().parent.parent / "dashboard" / "index.html"
 
 
@@ -45,7 +47,7 @@ app = FastAPI(
     description=(
         "A safe incident-triage platform for monitoring alerts and human-created incidents. "
         "It combines deterministic analysis, priority classification, sanitised runbook evidence, "
-        "incident history, and human approval controls."
+        "incident history, human approval controls, and an evidence-first LangGraph investigation workflow."
     ),
     version=APP_VERSION,
     lifespan=lifespan,
@@ -151,6 +153,16 @@ def read_incident(incident_id: str) -> dict:
     if incident is None:
         raise HTTPException(status_code=404, detail="Incident not found")
     return incident
+
+
+@app.post("/incidents/{incident_id}/investigate", response_model=InvestigationResponse)
+def investigate_incident(incident_id: str) -> dict:
+    """Run the evidence-first LangGraph workflow for a persisted incident."""
+
+    incident = get_incident(incident_id)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    return run_investigation(incident)
 
 
 @app.post("/incidents/{incident_id}/approve-remediation", response_model=IncidentResponse)
