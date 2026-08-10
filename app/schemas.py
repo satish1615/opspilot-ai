@@ -101,6 +101,13 @@ class InvestigationHypothesis(BaseModel):
     confidence: int = Field(ge=0, le=100)
 
 
+class TelemetryEvidenceItem(BaseModel):
+    source: Literal["tempo", "mimir", "loki"]
+    kind: Literal["trace", "metric", "log"]
+    summary: str
+    details: dict
+
+
 class InvestigationResponse(BaseModel):
     incident_id: str
     status: Literal["grounded_baseline", "needs_more_evidence", "no_issue_detected"]
@@ -109,4 +116,7 @@ class InvestigationResponse(BaseModel):
     steps: list[str]
     evidence_count: int = Field(ge=0)
     similar_incident_count: int = Field(ge=0)
+    telemetry_evidence_count: int = Field(ge=0)
+    observability: dict
+    telemetry_evidence: list[TelemetryEvidenceItem]
     hypothesis: InvestigationHypothesis
