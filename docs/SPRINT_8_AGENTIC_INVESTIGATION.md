@@ -29,7 +29,7 @@ Grounded RCA + recommendation + confidence
 Validation / safety checks
 ```
 
-## Increment 1 — implemented
+## Increment 1 — implemented and verified
 
 The first Sprint 8 increment establishes the orchestration contract before any external model is trusted with incident reasoning.
 
@@ -38,29 +38,57 @@ Implemented:
 - `langgraph==1.2.10`
 - New `app.agent` package
 - Typed investigation state
-- LangGraph workflow with three nodes:
-  1. `collect_incident_context`
-  2. `build_initial_hypothesis`
-  3. `validate_grounding`
+- LangGraph workflow for incident context, deterministic hypothesis, and grounding validation
 - New API endpoint: `POST /incidents/{incident_id}/investigate`
 - Structured investigation response schema
 - Tests for graph execution, persisted-incident investigation, and unknown incidents
 
+Verification on the developer Mac:
+
+```text
+26 passed in 1.41s
+```
+
+## Increment 2 — implemented, awaiting local verification
+
+The graph now has a dedicated `collect_observability_evidence` node and a read-only LGTM evidence client.
+
+Implemented:
+
+- Tempo TraceQL search through the Tempo HTTP API
+- Mimir instant queries for demo-run P95 HTTP duration and observed 5xx count
+- Loki LogQL range query for incident-relevant warning/error messages
+- Per-backend isolation so one unavailable signal does not break the investigation
+- Opt-in configuration via `OPSPILOT_OBSERVABILITY_ENABLED`
+- Structured telemetry evidence returned by the investigation endpoint
+- Mocked tests covering Tempo, Mimir, and Loki response parsing
+
+The default remains disabled so normal unit/API tests do not depend on Docker services. To use real local telemetry evidence:
+
+```bash
+export OPSPILOT_OBSERVABILITY_ENABLED=true
+export OPSPILOT_OBSERVABILITY_SERVICE_NAME=opspilot-synthetic-booking
+```
+
+Default local backend URLs match the Sprint 7 stack:
+
+- Tempo: `http://localhost:3200`
+- Mimir: `http://localhost:9009/prometheus`
+- Loki: `http://localhost:3100`
+
 ## Current reasoning mode
 
-The current response explicitly returns:
+The current response still explicitly returns:
 
 ```text
 reasoning_mode = deterministic_foundation
 ```
 
-This is intentional. The graph currently reuses the incident's existing deterministic probable cause, recommendation, runbook evidence, and similar-incident context. It does **not** call an LLM yet and must not be presented as AI-generated RCA.
-
-This baseline gives Sprint 8 a safe fallback path. When model-backed reasoning is added, OpsPilot can still return a transparent deterministic investigation if the model is disabled, unavailable, or fails validation.
+This is intentional. Even when live telemetry evidence is collected, the graph does **not** yet ask an LLM to produce RCA. The deterministic probable cause and recommendation remain the fallback until vector retrieval, LiteLLM, model selection, structured model output, and grounding validation are implemented.
 
 ## Remaining Sprint 8 work
 
-- Query real Tempo, Mimir, and Loki evidence from the Sprint 7 observability stack
+- Verify real Tempo, Mimir, and Loki collection against the running Sprint 7 stack
 - Add Qdrant-backed vector retrieval for runbooks and historical incidents
 - Add LiteLLM as the model gateway
 - Evaluate candidate LLMs against controlled SRE scenarios before selecting the primary model
@@ -75,7 +103,8 @@ This baseline gives Sprint 8 a safe fallback path. When model-backed reasoning i
 
 - No production or customer data is used.
 - The synthetic inventory dependency remains simulated.
-- LangGraph orchestration is real in Increment 1.
+- LangGraph orchestration is real.
+- Increment 2 performs read-only observability queries only.
 - Current RCA generation is deterministic, not LLM-based.
-- Vector RAG, LiteLLM, live observability evidence collection, and model-backed RCA are Sprint 8 work still to be completed and verified.
+- Qdrant vector RAG, LiteLLM, and model-backed RCA remain unimplemented until later Sprint 8 increments.
 - Remediation execution remains Sprint 9 scope.
