@@ -93,3 +93,20 @@ class IncidentResponse(BaseModel):
 class IncidentListResponse(BaseModel):
     total: int
     incidents: list[IncidentResponse]
+
+
+class InvestigationHypothesis(BaseModel):
+    root_cause: str
+    recommended_action: str
+    confidence: int = Field(ge=0, le=100)
+
+
+class InvestigationResponse(BaseModel):
+    incident_id: str
+    status: Literal["grounded_baseline", "needs_more_evidence", "no_issue_detected"]
+    workflow: str
+    reasoning_mode: str
+    steps: list[str]
+    evidence_count: int = Field(ge=0)
+    similar_incident_count: int = Field(ge=0)
+    hypothesis: InvestigationHypothesis
