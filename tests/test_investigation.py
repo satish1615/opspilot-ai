@@ -154,7 +154,7 @@ def test_observability_collector_parses_tempo_mimir_and_loki():
             value = "2" if "http_response_status_code" in query else "1500.5"
             return httpx.Response(
                 200,
-                json={"status": "success", "data": {"result": [{"value": [0, value]}]},
+                json={"status": "success", "data": {"result": [{"value": [0, value]}]}},
             )
         if request.url.path == "/loki/api/v1/query_range":
             return httpx.Response(
