@@ -50,3 +50,30 @@ class Incident(Base):
     approved_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
     approval_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     approved_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+
+class InvestigationRecord(Base):
+    """Persisted LangGraph investigation result for later learning and audit."""
+
+    __tablename__ = "investigations"
+
+    investigation_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    incident_id: Mapped[str] = mapped_column(String(36), index=True)
+    created_at: Mapped[str] = mapped_column(String(40), index=True)
+    workflow: Mapped[str] = mapped_column(String(100))
+    reasoning_mode: Mapped[str] = mapped_column(String(40), index=True)
+    status: Mapped[str] = mapped_column(String(40), index=True)
+    generation_status: Mapped[str] = mapped_column(String(60))
+    model_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    root_cause: Mapped[str] = mapped_column(Text)
+    recommended_action: Mapped[str] = mapped_column(Text)
+    prevention: Mapped[str] = mapped_column(Text)
+    confidence: Mapped[int] = mapped_column(Integer)
+
+    evidence_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    steps_json: Mapped[str] = mapped_column(Text, default="[]")
+    observability_json: Mapped[str] = mapped_column(Text, default="{}")
+    telemetry_evidence_json: Mapped[str] = mapped_column(Text, default="[]")
+    knowledge_retrieval_json: Mapped[str] = mapped_column(Text, default="{}")
+    retrieved_knowledge_json: Mapped[str] = mapped_column(Text, default="[]")
