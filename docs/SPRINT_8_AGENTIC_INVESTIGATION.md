@@ -2,109 +2,197 @@
 
 ## Objective
 
-Turn OpsPilot AI from deterministic incident triage into an evidence-first investigation workflow that can later combine live observability data, historical knowledge, vector retrieval, and LLM reasoning without allowing the model to invent operational evidence.
+Turn OpsPilot AI from deterministic incident triage into an evidence-first investigation workflow that can combine live observability data, historical operational knowledge, vector retrieval, and LLM reasoning without allowing the model to invent operational evidence.
 
-## Sprint 8 target architecture
+## Implemented Sprint 8 architecture
 
 ```text
 Persisted OpsPilot incident
         ↓
 LangGraph investigation workflow
         ↓
-Collect real evidence
+Collect current evidence
   ├─ Tempo traces
   ├─ Mimir metrics
   └─ Loki logs
         ↓
-Retrieve relevant knowledge
-  ├─ runbooks
-  └─ historical incidents via vector RAG
+Qdrant vector RAG
+  ├─ approved runbooks
+  ├─ historical incidents
+  └─ previously persisted RCA results
         ↓
 LiteLLM model gateway
         ↓
-Selected LLM
+Configured LLM
         ↓
-Grounded RCA + recommendation + confidence
+Structured probable RCA
+  ├─ root cause
+  ├─ recommended action
+  ├─ prevention
+  ├─ confidence
+  └─ evidence IDs
         ↓
-Validation / safety checks
+Grounding validation
+        ↓
+Persist investigation for audit + future RAG
 ```
 
-## Increment 1 — implemented and verified
-
-The first Sprint 8 increment establishes the orchestration contract before any external model is trusted with incident reasoning.
+## Increment 1 — LangGraph foundation
 
 Implemented:
 
 - `langgraph==1.2.10`
-- New `app.agent` package
-- Typed investigation state
-- LangGraph workflow for incident context, deterministic hypothesis, and grounding validation
-- New API endpoint: `POST /incidents/{incident_id}/investigate`
-- Structured investigation response schema
-- Tests for graph execution, persisted-incident investigation, and unknown incidents
+- Typed investigation state and graph orchestration
+- `POST /incidents/{incident_id}/investigate`
+- Deterministic fallback hypothesis
+- Grounding-status classification
 
-Verification on the developer Mac:
+## Increment 2 — live observability evidence
 
-```text
-26 passed in 1.41s
-```
+Implemented and previously verified against the local LGTM stack:
 
-## Increment 2 — implemented, awaiting local verification
-
-The graph now has a dedicated `collect_observability_evidence` node and a read-only LGTM evidence client.
-
-Implemented:
-
-- Tempo TraceQL search through the Tempo HTTP API
-- Mimir instant queries for demo-run P95 HTTP duration and observed 5xx count
+- Tempo TraceQL search
+- Mimir queries for demo-run P95 HTTP duration and observed 5xx count
 - Loki LogQL range query for incident-relevant warning/error messages
-- Per-backend isolation so one unavailable signal does not break the investigation
+- Per-backend fault isolation
 - Opt-in configuration via `OPSPILOT_OBSERVABILITY_ENABLED`
-- Structured telemetry evidence returned by the investigation endpoint
-- Mocked tests covering Tempo, Mimir, and Loki response parsing
+- Structured telemetry evidence in the investigation response
 
-The default remains disabled so normal unit/API tests do not depend on Docker services. To use real local telemetry evidence:
-
-```bash
-export OPSPILOT_OBSERVABILITY_ENABLED=true
-export OPSPILOT_OBSERVABILITY_SERVICE_NAME=opspilot-synthetic-booking
-```
-
-Default local backend URLs match the Sprint 7 stack:
+Default local backend URLs:
 
 - Tempo: `http://localhost:3200`
 - Mimir: `http://localhost:9009/prometheus`
 - Loki: `http://localhost:3100`
 
-## Current reasoning mode
+## Increment 3 — Qdrant vector RAG
 
-The current response still explicitly returns:
+Implemented:
 
-```text
-reasoning_mode = deterministic_foundation
+- Local Qdrant service in `docker-compose.observability.yml`
+- FastEmbed integration using `BAAI/bge-small-en-v1.5`
+- Semantic retrieval across:
+  - approved runbooks
+  - previous incident summaries
+  - previously persisted investigation/RCA results
+- Current incident is excluded from its own retrieval query
+- Retrieval is fault-isolated so Qdrant failure never breaks core incident triage
+
+Enable local RAG:
+
+```bash
+export OPSPILOT_RAG_ENABLED=true
+export OPSPILOT_QDRANT_URL=http://localhost:6333
 ```
 
-This is intentional. Even when live telemetry evidence is collected, the graph does **not** yet ask an LLM to produce RCA. The deterministic probable cause and recommendation remain the fallback until vector retrieval, LiteLLM, model selection, structured model output, and grounding validation are implemented.
+The first local embedding run may download the FastEmbed model.
 
-## Remaining Sprint 8 work
+## Increment 4 — LiteLLM grounded RCA
 
-- Verify real Tempo, Mimir, and Loki collection against the running Sprint 7 stack
-- Add Qdrant-backed vector retrieval for runbooks and historical incidents
-- Add LiteLLM as the model gateway
-- Evaluate candidate LLMs against controlled SRE scenarios before selecting the primary model
-- Require structured model output
-- Ground RCA statements in collected evidence and retrieved context
-- Add hallucination / unsupported-claim checks
-- Persist investigation results and model/evidence metadata
-- Connect investigation output cleanly to the OpsPilot incident record
-- Add end-to-end tests and demo evidence
+Implemented:
+
+- LiteLLM Python SDK as the provider-neutral model gateway
+- Configurable model through `OPSPILOT_LLM_MODEL`
+- Default demo model: `gemini/gemini-2.5-flash`
+- Structured model contract:
+  - probable root cause
+  - recommended action
+  - prevention action
+  - confidence
+  - evidence IDs
+- Explicit evidence catalogue IDs:
+  - `A*` current incident/alert context
+  - `B*` approved runbook evidence already attached to the incident
+  - `T*` live telemetry evidence
+  - `K*` Qdrant-retrieved operational knowledge
+- Model output with unknown evidence IDs is rejected
+- When stronger evidence exists, the model must cite telemetry, retrieved knowledge, or approved runbook evidence rather than relying only on the raw alert
+- Provider/model failures automatically fall back to deterministic analysis
+
+Example enablement for the configured Gemini model:
+
+```bash
+export GEMINI_API_KEY="<set-locally-do-not-commit>"
+export OPSPILOT_LLM_ENABLED=true
+export OPSPILOT_LLM_MODEL=gemini/gemini-2.5-flash
+```
+
+No API key is stored in the repository.
+
+## Increment 5 — persistence and learning loop
+
+Implemented:
+
+- New `investigations` table created alongside the existing incident table
+- Stores:
+  - workflow and reasoning mode
+  - model metadata
+  - root cause, action, prevention, confidence
+  - evidence IDs
+  - observability evidence
+  - RAG retrieval metadata
+  - retrieved knowledge
+  - workflow steps
+- `GET /incidents/{incident_id}/investigation` returns the latest persisted investigation
+- Persisted investigation RCA text becomes eligible knowledge for later Qdrant retrieval
+
+This creates the Sprint 8 learning loop:
+
+```text
+new incident → investigate → grounded RCA → persist → index as knowledge → help future incident
+```
+
+## Safe fallback behavior
+
+All optional AI/observability components are fault-isolated.
+
+If OpenTelemetry backends, Qdrant, the embedding model, LiteLLM, the provider, or an API key is unavailable, OpsPilot does not fail the incident request. It returns the deterministic baseline with an explicit `reasoning_mode=deterministic_fallback` and records why model generation was unavailable.
+
+When the LLM path succeeds, the response uses `reasoning_mode=llm_grounded` and `status=grounded_rca`.
+
+## Local full-flow configuration
+
+```bash
+# Infrastructure
+docker compose -f docker-compose.observability.yml up -d
+
+# Synthetic service telemetry
+export OTEL_ENABLED=true
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+export OTEL_SERVICE_NAME=opspilot-synthetic-booking
+
+# OpsPilot evidence collection
+export OPSPILOT_OBSERVABILITY_ENABLED=true
+export OPSPILOT_OBSERVABILITY_SERVICE_NAME=opspilot-synthetic-booking
+
+# RAG
+export OPSPILOT_RAG_ENABLED=true
+export OPSPILOT_QDRANT_URL=http://localhost:6333
+
+# LLM
+export OPSPILOT_LLM_ENABLED=true
+export OPSPILOT_LLM_MODEL=gemini/gemini-2.5-flash
+export GEMINI_API_KEY="<local-secret>"
+```
 
 ## Safety and truthfulness
 
 - No production or customer data is used.
-- The synthetic inventory dependency remains simulated.
+- The inventory dependency in the synthetic workload remains simulated.
 - LangGraph orchestration is real.
-- Increment 2 performs read-only observability queries only.
-- Current RCA generation is deterministic, not LLM-based.
-- Qdrant vector RAG, LiteLLM, and model-backed RCA remain unimplemented until later Sprint 8 increments.
+- Tempo/Mimir/Loki evidence collection is read-only.
+- Qdrant retrieval is read-only during investigation except for indexing the sanitised local knowledge collection.
+- LLM output is treated as a probable RCA, not an unquestioned fact.
+- Unsupported evidence citations are rejected.
+- Safe deterministic fallback remains available.
+- No infrastructure remediation is executed in Sprint 8.
 - Remediation execution remains Sprint 9 scope.
+
+## Verification status
+
+The implementation and automated coverage are now in place. Full Sprint 8 validation should run after dependency installation and should include:
+
+1. complete pytest suite;
+2. Qdrant semantic retrieval against the local service;
+3. live model call through LiteLLM with a locally supplied API key;
+4. end-to-end incident → telemetry → RAG → model RCA → persistence check;
+5. confirmation that no code or secret is written to `main` before review/approval.
