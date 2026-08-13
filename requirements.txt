@@ -8,3 +8,5 @@ opentelemetry-exporter-otlp-proto-http==1.44.0
 opentelemetry-instrumentation-fastapi==0.65b0
 langgraph==1.2.10
 httpx==0.28.1
+qdrant-client[fastembed]==1.18.0
+litellm==1.92.0
