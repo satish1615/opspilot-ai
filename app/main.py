@@ -27,12 +27,14 @@ from app.storage import (
     approve_remediation,
     find_similar_incidents,
     get_incident,
+    get_latest_investigation,
     list_incidents,
     save_incident,
+    save_investigation_result,
     summary_metrics,
 )
 
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 DASHBOARD_PATH = Path(__file__).resolve().parent.parent / "dashboard" / "index.html"
 
 
@@ -45,9 +47,9 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="OpsPilot AI",
     description=(
-        "A safe incident-triage platform for monitoring alerts and human-created incidents. "
-        "It combines deterministic analysis, priority classification, sanitised runbook evidence, "
-        "incident history, human approval controls, and an evidence-first LangGraph investigation workflow."
+        "An evidence-first incident investigation platform for monitoring alerts and human-created incidents. "
+        "It combines deterministic triage, OpenTelemetry evidence, LangGraph orchestration, optional Qdrant RAG, "
+        "LiteLLM-backed grounded RCA generation, persistent investigation history, and human approval controls."
     ),
     version=APP_VERSION,
     lifespan=lifespan,
@@ -157,12 +159,32 @@ def read_incident(incident_id: str) -> dict:
 
 @app.post("/incidents/{incident_id}/investigate", response_model=InvestigationResponse)
 def investigate_incident(incident_id: str) -> dict:
-    """Run the evidence-first LangGraph workflow for a persisted incident."""
+    """Run and persist the evidence-first LangGraph investigation workflow."""
 
     incident = get_incident(incident_id)
     if incident is None:
         raise HTTPException(status_code=404, detail="Incident not found")
-    return run_investigation(incident)
+
+    result = run_investigation(incident)
+    persisted = save_investigation_result(result)
+    result["persistence"] = {
+        "status": "saved",
+        "investigation_id": persisted["investigation_id"],
+        "created_at": persisted["created_at"],
+    }
+    return result
+
+
+@app.get("/incidents/{incident_id}/investigation")
+def read_latest_investigation(incident_id: str) -> dict:
+    """Return the latest persisted RCA investigation for an incident."""
+
+    if get_incident(incident_id) is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    investigation = get_latest_investigation(incident_id)
+    if investigation is None:
+        raise HTTPException(status_code=404, detail="No investigation found for incident")
+    return investigation
 
 
 @app.post("/incidents/{incident_id}/approve-remediation", response_model=IncidentResponse)
