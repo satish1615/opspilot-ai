@@ -98,7 +98,9 @@ class IncidentListResponse(BaseModel):
 class InvestigationHypothesis(BaseModel):
     root_cause: str
     recommended_action: str
+    prevention: str
     confidence: int = Field(ge=0, le=100)
+    evidence_ids: list[str] = Field(default_factory=list)
 
 
 class TelemetryEvidenceItem(BaseModel):
@@ -110,13 +112,19 @@ class TelemetryEvidenceItem(BaseModel):
 
 class InvestigationResponse(BaseModel):
     incident_id: str
-    status: Literal["grounded_baseline", "needs_more_evidence", "no_issue_detected"]
+    status: Literal["grounded_rca", "grounded_fallback", "needs_more_evidence", "no_issue_detected"]
     workflow: str
-    reasoning_mode: str
+    reasoning_mode: Literal["llm_grounded", "deterministic_fallback"]
+    generation_status: str
+    model: str | None = None
     steps: list[str]
     evidence_count: int = Field(ge=0)
     similar_incident_count: int = Field(ge=0)
     telemetry_evidence_count: int = Field(ge=0)
+    retrieved_knowledge_count: int = Field(ge=0)
     observability: dict
     telemetry_evidence: list[TelemetryEvidenceItem]
+    knowledge_retrieval: dict
+    retrieved_knowledge: list[dict]
     hypothesis: InvestigationHypothesis
+    persistence: dict = Field(default_factory=dict)
