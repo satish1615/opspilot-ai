@@ -189,10 +189,22 @@ export GEMINI_API_KEY="<local-secret>"
 
 ## Verification status
 
-The implementation and automated coverage are now in place. Full Sprint 8 validation should run after dependency installation and should include:
+Verified on GitHub Actions after Sprint 8 implementation:
 
-1. complete pytest suite;
-2. Qdrant semantic retrieval against the local service;
-3. live model call through LiteLLM with a locally supplied API key;
-4. end-to-end incident → telemetry → RAG → model RCA → persistence check;
-5. confirmation that no code or secret is written to `main` before review/approval.
+- dependency installation succeeds on Python 3.13;
+- complete automated suite passes: **33/33 tests**;
+- real FastEmbed inference and Qdrant semantic retrieval pass using Qdrant in-memory mode;
+- LangGraph RAG/LLM path is covered with a controlled model response;
+- unsupported evidence IDs are rejected;
+- deterministic fallback behavior is covered;
+- investigation results are persisted and can be read back through the API;
+- the Sprint 8 branch is ahead of `develop/usecase-115` and `main` remains untouched.
+
+Previously verified manually against the local Sprint 7 stack:
+
+- Tempo traces available;
+- Mimir metrics available;
+- Loki warning/error logs available;
+- LangGraph successfully collected those live signals for an incident.
+
+One final external-service check remains before claiming a fully live AI demo: run a real LiteLLM call to the configured Gemini model using a locally supplied `GEMINI_API_KEY`, then run the complete incident → telemetry → Qdrant RAG → LLM RCA → persistence flow. The key must remain local and must never be committed.
